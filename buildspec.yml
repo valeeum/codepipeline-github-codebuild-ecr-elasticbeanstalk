@@ -29,7 +29,7 @@ phases:
       - echo deleting Dockerfile
       - rm Dockerfile
       - echo Configuring awslogs container logging
-      - LOGCONFIG=$(grep name Dockerrun.aws.json | awk -F":" '{print $2}' | sed 's/[",]//g' | awk '{print "      [stream-"$1"-container]\\n      log_group_name=`{\"Fn::Join\":[\"/\", [\"/aws/elasticbeanstalk\", { \"Ref\":\"AWSEBEnvironmentName\" }, \""$1""\" ,\"stdouterr\"]]}`\\n      log_stream_name={instance_id}\\n      file=/var/log/containers/"$1"-*-stdouterr.log\\n\\n"}' | tr -d "\n")
+      - LOGCONFIG=$(grep name Dockerrun.aws.json | awk -F":" '{print $2}' | sed 's/[",]//g' | awk '{print "      [stream-"$1"-container]\\n      log_group_name=/aws/elasticbeanstalk`{\"Ref\":\"AWSEBEnvironmentName\"}`/"$1"/stdouterr\\n      log_stream_name={instance_id}\\n      file=/var/log/containers/"$1"-*-stdouterr.log\\n\\n"}' | tr -d "\n")
       - awk -v S="$LOGCONFIG" '/__LOGCONFIG__/{$0=S}1' .ebextensions/00-logstream.config.tpl >> .ebextensions/00-logstream.config
       - echo Copying git branch specific configs from $GITBRANCH
       - cp .ebextensions_$GITBRANCH/* .ebextensions/
