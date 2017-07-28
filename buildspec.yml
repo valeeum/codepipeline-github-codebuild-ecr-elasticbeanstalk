@@ -1,0 +1,39 @@
+version: 0.2
+env:
+  variables:
+    IMAGE_REPO_NAME: YOUR-ECR-REPO-NAME-HERE
+    IMAGE_TAG: latest
+    AWS_ACCOUNT_ID: YOUR-AWS-ACCOUNT-NUMBER-HERE
+
+phases:
+  pre_build:
+    commands:
+      - GITBRANCH=${CODEBUILD_INITIATOR##*.}
+      - DOCKER_IMAGE1=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - echo Logging in to Amazon ECR...
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION)
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $IMAGE_REPO_NAME .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $DOCKER_IMAGE1
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - echo docker image $DOCKER_IMAGE1
+      - docker push $DOCKER_IMAGE1
+      - sed "s|__DOCKER_IMAGE1__|$DOCKER_IMAGE1|g" Dockerrun.aws.json.tpl >> Dockerrun.aws.json
+      - echo renamed and replaced variables in Dockerrun.aws.json.tpl file
+      - echo deleting Dockerfile
+      - rm Dockerfile
+      - echo Configuring awslogs container logging
+      - LOGCONFIG=$(grep name Dockerrun.aws.json | awk -F":" '{print $2}' | sed 's/[",]//g' | awk '{print "      [stream-"$1"-container]\\n      log_group_name=`{\"Fn::Join\":[\"/\", [\"/aws/elasticbeanstalk\", { \"Ref\":\"AWSEBEnvironmentName\" }, \""$1""\" ,\"stdouterr\"]]}`\\n      log_stream_name={instance_id}\\n      file=/var/log/containers/"$1"-*-stdouterr.log\\n\\n"}' | tr -d "\n")
+      - awk -v S="$LOGCONFIG" '/__LOGCONFIG__/{$0=S}1' .ebextensions/00-logstream.config.tpl >> .ebextensions/00-logstream.config
+      - echo Copying git branch specific configs from $GITBRANCH
+      - cp .ebextensions_$GITBRANCH/* .ebextensions/
+artifacts:
+  files:
+    - Dockerrun.aws.json
+    - .ebextensions/**/*
