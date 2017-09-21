@@ -1,14 +1,13 @@
 version: 0.2
 env:
   variables:
-    IMAGE_REPO_NAME: YOUR-ECR-REPO-NAME-HERE
-    IMAGE_TAG: latest
-    AWS_ACCOUNT_ID: YOUR-AWS-ACCOUNT-NUMBER-HERE
-
+    IMAGE_REPO_NAME: INSERT_REPO_NAME_HERE
+    AWS_ACCOUNT_ID: INSERT_ACCOUNT_ID_HERE
 phases:
   pre_build:
     commands:
       - GITBRANCH=${CODEBUILD_INITIATOR##*.}
+      - IMAGE_TAG=${GITBRANCH}
       - DOCKER_IMAGE1=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
       - echo Logging in to Amazon ECR...
       - $(aws ecr get-login --region $AWS_DEFAULT_REGION)
@@ -16,7 +15,7 @@ phases:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME .
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $DOCKER_IMAGE1
   post_build:
     commands:
@@ -29,11 +28,13 @@ phases:
       - echo deleting Dockerfile
       - rm Dockerfile
       - echo Configuring awslogs container logging
-      - LOGCONFIG=$(grep name Dockerrun.aws.json | awk -F":" '{print $2}' | sed 's/[",]//g' | awk '{print "      [stream-"$1"-container]\\n      log_group_name=/aws/elasticbeanstalk`{\"Ref\":\"AWSEBEnvironmentName\"}`/"$1"/stdouterr\\n      log_stream_name={instance_id}\\n      file=/var/log/containers/"$1"-*-stdouterr.log\\n\\n"}' | tr -d "\n")
+      - LOGCONFIG=$(grep name Dockerrun.aws.json | awk -F":" '{print $2}' | sed 's/[",]//g' | awk '{print "      [stream-"$1"-container]\\n      log_group_name=`{\"Fn::Join\":[\"/\", [\"/aws/elasticbeanstalk\", { \"Ref\":\"AWSEBEnvironmentName\" }]]}`/"$1"/stdouterr\\n      log_stream_name={instance_id}\\n      file=/var/log/containers/"$1"-*-stdouterr.log\\n\\n"}' | tr -d "\n")
       - awk -v S="$LOGCONFIG" '/__LOGCONFIG__/{$0=S}1' .ebextensions/00-logstream.config.tpl >> .ebextensions/00-logstream.config
       - echo Copying git branch specific configs from $GITBRANCH
       - cp .ebextensions_$GITBRANCH/* .ebextensions/
+      - cp -R .ebextensions ebextensions
 artifacts:
   files:
     - Dockerrun.aws.json
+    - ebextensions/**/*
     - .ebextensions/**/*
